@@ -1,135 +1,112 @@
+# =====================================================
 # app.py
+# NexEra AI → 3D Asset Pipeline (Test 1)
+# =====================================================
+
 import gradio as gr
 from transformers import pipeline
 
-# ---------------------------
-# 1️ Load a text generation model
-# ---------------------------
-# This pipeline uses GPT-2 (pretrained) to generate a short explanation based on user input
+
+# -----------------------------------------------------
+# 1. Load a lightweight AI model for text reasoning
+# -----------------------------------------------------
+# We use a small text-generation model for explanation.
+# Shape/color reasoning is intentionally deterministic
+# for clarity and controllability in a prototype.
 generator = pipeline("text-generation", model="gpt2")
 
-# ---------------------------
-# 2️ Function to generate AI explanation
-# ---------------------------
-def generate_explanation(user_text):
-    """
-    Takes user input text and generates an AI explanation.
-    If the input is empty, it asks the user to type something.
-    """
-    if not user_text.strip():
-        return "Please type an object description."
-    output = generator(user_text, max_length=50, num_return_sequences=1)
-    explanation_text = output[0]['generated_text']
-    return explanation_text
 
-# ---------------------------
-# 3️ Function to generate 3D model HTML
-# ---------------------------
-def generate_3d_html(user_text):
-    """
-    Converts the user's text into a simple 3D object using three.js.
-    Supports cube, sphere, cone and basic colors (red, green, blue, yellow).
-    """
-    # Default values
-    shape = "box"  # default shape is cube
-    color = "0x00ff00"  # default color green
+# -----------------------------------------------------
+# 2. AI reasoning: text → shape, color, explanation
+# -----------------------------------------------------
+def ai_reason(user_text: str):
+    if not user_text or not user_text.strip():
+        return "box", "0x00ff00", "Please describe an object."
 
-    # Normalize input for easier detection
-    text_lower = user_text.lower()
+    text = user_text.lower()
 
-    # Detect shape keywords
-    if "sphere" in text_lower:
+    # ---- Shape detection ----
+    shape = "box"
+    if "sphere" in text or "ball" in text:
         shape = "sphere"
-    elif "cone" in text_lower:
+    elif "cone" in text:
         shape = "cone"
 
-    # Detect color keywords
-    if "red" in text_lower:
+    # ---- Color detection ----
+    color = "0x00ff00"  # default green
+    if "red" in text:
         color = "0xff0000"
-    elif "blue" in text_lower:
+    elif "blue" in text:
         color = "0x0000ff"
-    elif "yellow" in text_lower:
+    elif "yellow" in text:
         color = "0xffff00"
-    
-    # HTML + JavaScript for three.js rendering
-    html_code = f"""
-    <div id="container" style="width:100%; height:400px;"></div>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+    # ---- AI-generated educational explanation ----
+    prompt = f"Explain what this object is used for in simple terms: {user_text}"
+    output = generator(prompt, max_length=60, num_return_sequences=1)
+    explanation = output[0]["generated_text"]
+
+    return shape, color, explanation
+
+
+# -----------------------------------------------------
+# 3. Bridge: Python → index.html → main.js
+# -----------------------------------------------------
+def render_pipeline(user_text):
+    shape, color, explanation = ai_reason(user_text)
+
+    # This script calls the JS bridge function in index.html
+    js_call = f"""
     <script>
-        // Scene setup
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({{antialias:true}});
-        renderer.setSize(400, 400);
-        document.getElementById('container').appendChild(renderer.domElement);
-        // Geometry selection
-        let geometry;
-        if("{shape}" === "box") {{
-            geometry = new THREE.BoxGeometry();
-        }} else if("{shape}" === "sphere") {{
-            geometry = new THREE.SphereGeometry(0.5, 32, 32);
-        }} else if("{shape}" === "cone") {{
-            geometry = new THREE.ConeGeometry(0.5, 1, 32);
+        if (typeof renderFromAI === "function") {{
+            renderFromAI("{shape}", {color});
         }}
-        // Material
-        const material = new THREE.MeshBasicMaterial({{color: {color}}});
-        const object = new THREE.Mesh(geometry, material);
-        scene.add(object);
-        // Camera position
-        camera.position.z = 3;
-        // Animation loop
-        function animate() {{
-            requestAnimationFrame(animate);
-            object.rotation.x += 0.01;
-            object.rotation.y += 0.01;
-            renderer.render(scene, camera);
-        }}
-        animate();
     </script>
     """
-    return html_code
 
-# ---------------------------
-# 4️ Build the Gradio interface
-# ---------------------------
+    return explanation, js_call
+
+
+# -----------------------------------------------------
+# 4. Build Gradio interface
+# -----------------------------------------------------
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown(
         """
         # AI-Powered 3D Learning Prototype  
-        _Type an object description and explore it in 3D_
+        Type an object description to generate a 3D learning asset.
         """
     )
 
     with gr.Row():
-        # Left column: input + AI explanation
         with gr.Column(scale=1):
             user_input = gr.Textbox(
                 label="Describe an object",
-                placeholder="e.g. a yellow sphere",
+                placeholder="e.g. a yellow hard hat or a blue sphere",
                 lines=2
             )
 
-            generate_btn = gr.Button(
-                "Generate",
-                variant="primary"
+            generate_btn = gr.Button("Generate", variant="primary")
+
+            explanation_output = gr.Markdown(
+                "AI-generated explanation will appear here."
             )
 
-            explanation = gr.Markdown("AI explanation will appear here.")
-
-        # Right column: 3D Viewer
         with gr.Column(scale=2):
-            three_d_viewer = gr.HTML("<div>3D Viewer will load here</div>")
+            # Load the frontend shell
+            viewer = gr.HTML(
+                '<iframe src="index.html" '
+                'style="width:100%; height:460px; border:none;"></iframe>'
+            )
 
-    # ---------------------------
-    # 5️ Connect the button click
-    # ---------------------------
     generate_btn.click(
-        fn=lambda text: [generate_explanation(text), generate_3d_html(text)],
+        fn=render_pipeline,
         inputs=user_input,
-        outputs=[explanation, three_d_viewer]
+        outputs=[explanation_output, viewer]
     )
 
-# ---------------------------
-# 6️ Launch the Gradio app
-# ---------------------------
+
+# -----------------------------------------------------
+# 5. Launch app
+# -----------------------------------------------------
 demo.launch()
