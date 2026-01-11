@@ -1,168 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>AI → 3D Asset Pipeline | NexEra Challenge</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8" />
+    <title>NexEra AI → 3D Asset Pipeline</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f7fa;
-      color: #222;
-    }
+    <!-- Three.js core -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 
-    h1 {
-      font-size: 22px;
-    }
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
 
-    .controls {
-      margin-bottom: 10px;
-    }
+    <!-- Main 3D logic -->
+    <script src="./main.js"></script>
 
-    input {
-      padding: 8px;
-      width: 280px;
-      font-size: 14px;
-    }
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f5f7fa;
+            font-family: Arial, sans-serif;
+        }
 
-    button {
-      padding: 8px 12px;
-      font-size: 14px;
-      cursor: pointer;
-    }
+        #viewer {
+            width: 100%;
+            height: 420px;
+            background: #ffffff;
+            border-radius: 12px;
+        }
 
-    #summary {
-      margin-top: 10px;
-      font-style: italic;
-    }
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: 420px;
-      border: 1px solid #ccc;
-      margin-top: 15px;
-      background: #fff;
-    }
-
-    footer {
-      margin-top: 15px;
-      font-size: 12px;
-      color: #666;
-    }
-  </style>
+        #placeholder {
+            height: 420px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #777;
+            font-size: 14px;
+        }
+    </style>
 </head>
 
 <body>
-  <h1>AI-Generated 3D Learning Asset</h1>
 
-  <div class="controls">
-    <input id="prompt" placeholder="Describe an object (e.g. yellow hard hat)" />
-    <button id="generateBtn">Generate</button>
-  </div>
+    <!-- Viewer container -->
+    <div id="viewer">
+        <div id="placeholder">
+            Waiting for AI-generated 3D content…
+        </div>
+    </div>
 
-  <div id="summary"></div>
+    <!-- Python → JS bridge -->
+    <script>
+        /**
+         * This function is called by Gradio via HTML injection.
+         * app.py will generate a script that calls this function.
+         */
+        window.renderFromAI = function (shape, colorHex) {
+            if (typeof window.loadObjectFromAI !== "function") {
+                console.error("3D engine not loaded");
+                return;
+            }
 
-  <canvas id="scene"></canvas>
+            // Remove placeholder text
+            const placeholder = document.getElementById("placeholder");
+            if (placeholder) {
+                placeholder.remove();
+            }
 
-  <footer>
-    NexEra AI Engineering Challenge — Test 1
-  </footer>
-
-  <!-- THREE.JS LOGIC -->
-  <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.152/build/three.module.js";
-    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.152/examples/jsm/controls/OrbitControls.js";
-    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.152/examples/jsm/loaders/GLTFLoader.js";
-
-    const canvas = document.getElementById("scene");
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf0f0f0);
-
-    const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / 420, 0.1, 100);
-    camera.position.set(0, 1.5, 3);
-
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setSize(canvas.clientWidth, 420);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-
-    let currentModel = null;
-
-    /* ---------------- AI REASONING LAYER ---------------- */
-    function aiInterpret(prompt) {
-      const text = prompt.toLowerCase();
-
-      if (text.includes("hat")) {
-        return {
-          asset: "hard_hat.glb",
-          scale: 1.2,
-          summary:
-            "A hard hat is protective safety equipment commonly used on construction sites to reduce the risk of head injuries."
+            window.loadObjectFromAI(shape, colorHex);
         };
-      }
+    </script>
 
-      if (text.includes("wrench")) {
-        return {
-          asset: "wrench.glb",
-          scale: 1.0,
-          summary:
-            "A wrench is a hand tool used to tighten or loosen bolts and nuts during mechanical or construction work."
-        };
-      }
-
-      return {
-        asset: "fire_extinguisher.glb",
-        scale: 1.0,
-        summary:
-          "A fire extinguisher is an essential safety device used to control small fires in emergency situations."
-      };
-    }
-
-    /* ---------------- 3D LOADING ---------------- */
-    function loadModel(file, scale) {
-      const loader = new GLTFLoader();
-
-      if (currentModel) {
-        scene.remove(currentModel);
-      }
-
-      loader.load(`assets/${file}`, (gltf) => {
-        currentModel = gltf.scene;
-        currentModel.scale.setScalar(scale);
-
-        // Center model
-        const box = new THREE.Box3().setFromObject(currentModel);
-        const center = box.getCenter(new THREE.Vector3());
-        currentModel.position.sub(center);
-
-        scene.add(currentModel);
-      });
-    }
-
-    document.getElementById("generateBtn").onclick = () => {
-      const prompt = document.getElementById("prompt").value.trim();
-      if (!prompt) return;
-
-      const result = aiInterpret(prompt);
-      document.getElementById("summary").innerText = result.summary;
-      loadModel(result.asset, result.scale);
-    };
-
-    function animate() {
-      requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    }
-
-    animate();
-  </script>
 </body>
 </html>
